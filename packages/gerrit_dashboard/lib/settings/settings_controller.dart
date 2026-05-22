@@ -207,8 +207,7 @@ enum DashboardFilter {
   open('Open', statusClause: 'status:open'),
   merged('Merged', statusClause: 'status:merged'),
   abandoned('Abandoned', statusClause: 'status:abandoned'),
-  wip('WIP'),
-  private('Private');
+  wip('WIP');
 
   final String label;
   final String? statusClause;
@@ -222,7 +221,6 @@ const Set<DashboardFilter> defaultFilters = {
   DashboardFilter.open,
   DashboardFilter.merged,
   DashboardFilter.wip,
-  DashboardFilter.private,
   // Abandoned is intentionally NOT in the default set.
 };
 
@@ -354,8 +352,5 @@ String? buildStatusClause(Set<DashboardFilter> selected) {
 /// True when [c] should be visible given the active attribute chips.
 bool passesAttributeFilters(ChangeInfo c, Set<DashboardFilter> selected) {
   if (c.work && !selected.contains(DashboardFilter.wip)) return false;
-  if (c.isPrivate && !selected.contains(DashboardFilter.private)) {
-    return false;
-  }
   return true;
 }

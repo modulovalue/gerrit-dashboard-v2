@@ -66,14 +66,7 @@ void main() {
       );
     });
 
-    test('Private chip off hides private changes', () {
-      expect(
-        passesAttributeFilters(_ci(private: true), const {}),
-        isFalse,
-      );
-    });
-
-    test('Non-WIP non-private change passes empty filter set', () {
+    test('Non-WIP change passes empty filter set', () {
       expect(
         passesAttributeFilters(_ci(), const {}),
         isTrue,
@@ -85,7 +78,6 @@ void main() {
     expect(defaultFilters, contains(DashboardFilter.open));
     expect(defaultFilters, contains(DashboardFilter.merged));
     expect(defaultFilters, contains(DashboardFilter.wip));
-    expect(defaultFilters, contains(DashboardFilter.private));
     expect(defaultFilters, isNot(contains(DashboardFilter.abandoned)));
   });
 }
