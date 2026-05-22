@@ -1,7 +1,8 @@
 <h1 align="center">Gerrit Dart Dashboard</h1>
 
 <p align="center">
-  A read-only, anonymous dashboard for the Dart SDK Gerrit instance.<br>
+  An experimental Gerrit Dashboard rewritten in Flutter.<br>
+  Read-only and anonymous, for the Dart SDK Gerrit instance.<br>
   Flutter web, compiled to <strong>WebAssembly</strong>.
 </p>
 
