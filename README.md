@@ -2,7 +2,7 @@
 
 <p align="center">
   An experimental Gerrit Dashboard rewritten in Flutter.<br>
-  Read-only and anonymous, for the Dart SDK Gerrit instance.<br>
+  For the Dart SDK Gerrit instance.<br>
   Flutter web, compiled to <strong>WebAssembly</strong>.
 </p>
 
