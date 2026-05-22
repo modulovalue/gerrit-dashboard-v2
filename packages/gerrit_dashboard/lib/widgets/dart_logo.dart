@@ -30,7 +30,7 @@ class _DartLogoPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
 
-    // Background blade, leaning light-blue quadrilateral.
+    // Background blade: leaning light-blue quadrilateral.
     final blade = Path()
       ..moveTo(0.08 * w, 0.18 * h)
       ..lineTo(0.58 * w, 0.04 * h)
@@ -39,7 +39,7 @@ class _DartLogoPainter extends CustomPainter {
       ..close();
     canvas.drawPath(blade, Paint()..color = _accent);
 
-    // Foreground body, deep-blue overlapping quadrilateral.
+    // Foreground body: deep-blue overlapping quadrilateral.
     final body = Path()
       ..moveTo(0.36 * w, 0.42 * h)
       ..lineTo(0.86 * w, 0.30 * h)

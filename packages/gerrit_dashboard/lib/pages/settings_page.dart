@@ -90,7 +90,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           Text('About', style: text.titleMedium),
           const SizedBox(height: 6),
           const Text(
-            'gerrit-dashboard-v2, read-only Gerrit dashboard built in Flutter '
+            'gerrit-dashboard-v2: read-only Gerrit dashboard built in Flutter '
             '(Wasm). Anonymous endpoints, Dart SDK only.',
           ),
           const SizedBox(height: 8),

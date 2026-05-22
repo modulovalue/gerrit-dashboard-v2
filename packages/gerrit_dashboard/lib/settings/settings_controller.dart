@@ -267,7 +267,7 @@ class FilterController extends Notifier<Set<DashboardFilter>> {
   }
 
   /// Cmd/Ctrl-click semantics: select only this filter, deselect the rest.
-  /// Idempotent, re-applying when already exclusive is a no-op.
+  /// Idempotent: re-applying when already exclusive is a no-op.
   void selectOnly(DashboardFilter f) {
     state = {f};
     _persist();
