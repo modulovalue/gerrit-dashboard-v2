@@ -35,7 +35,12 @@ class GerritClient {
   }
 
   /// `GET /changes/?q=<query>&o=...`
-  Future<List<ChangeInfo>> queryChanges(
+  ///
+  /// Returns the page of changes plus a `hasMore` flag derived from the
+  /// `_more_changes: true` marker Gerrit sets on the last item when the
+  /// server-side result set extends beyond this page. Combine with
+  /// [start] / [limit] for pagination.
+  Future<({List<ChangeInfo> changes, bool hasMore})> queryChanges(
     String query, {
     Set<ChangeOption> options = const {},
     int? limit,
@@ -54,10 +59,17 @@ class GerritClient {
         'Expected JSON array from /changes/, got ${json.runtimeType}',
       );
     }
-    return [
-      for (final item in json)
-        if (item is Map<String, dynamic>) ChangeInfo.fromJson(item),
-    ];
+    final changes = <ChangeInfo>[];
+    var hasMore = false;
+    for (final item in json) {
+      if (item is Map<String, dynamic>) {
+        changes.add(ChangeInfo.fromJson(item));
+        // Gerrit sets `_more_changes: true` only on the trailing element
+        // when there are more matches beyond this page.
+        if (item['_more_changes'] == true) hasMore = true;
+      }
+    }
+    return (changes: changes, hasMore: hasMore);
   }
 
   /// `GET /changes/<number>?o=...`

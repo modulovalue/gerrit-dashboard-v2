@@ -47,18 +47,78 @@ List<_Tab> _buildTabs(
   ];
 }
 
-final _queryResultsProvider =
-    FutureProvider.family<List<ChangeInfo>, String>((ref, query) async {
-  final client = ref.watch(gerritClientProvider);
-  return client.queryChanges(
-    query,
-    options: const {
-      ChangeOption.currentRevision,
-      ChangeOption.detailedAccounts,
-    },
-    limit: 50,
-  );
-});
+@immutable
+class _PagedQueryState {
+  final List<ChangeInfo> changes;
+  final bool hasMore;
+  final bool loading;
+  final Object? error;
+  const _PagedQueryState({
+    this.changes = const [],
+    this.hasMore = true,
+    this.loading = false,
+    this.error,
+  });
+
+  _PagedQueryState copyWith({
+    List<ChangeInfo>? changes,
+    bool? hasMore,
+    bool? loading,
+    Object? error,
+    bool clearError = false,
+  }) =>
+      _PagedQueryState(
+        changes: changes ?? this.changes,
+        hasMore: hasMore ?? this.hasMore,
+        loading: loading ?? this.loading,
+        error: clearError ? null : (error ?? this.error),
+      );
+}
+
+class _PagedQueryController extends FamilyNotifier<_PagedQueryState, String> {
+  static const _pageSize = 25;
+
+  @override
+  _PagedQueryState build(String query) {
+    // Trigger the initial fetch lazily so we don't synchronously mutate
+    // state from build().
+    Future.microtask(loadMore);
+    return const _PagedQueryState();
+  }
+
+  Future<void> loadMore() async {
+    if (state.loading || !state.hasMore) return;
+    state = state.copyWith(loading: true, clearError: true);
+    try {
+      final client = ref.read(gerritClientProvider);
+      final result = await client.queryChanges(
+        arg,
+        options: const {
+          ChangeOption.currentRevision,
+          ChangeOption.detailedAccounts,
+        },
+        limit: _pageSize,
+        start: state.changes.length,
+      );
+      state = state.copyWith(
+        changes: [...state.changes, ...result.changes],
+        hasMore: result.hasMore,
+        loading: false,
+      );
+    } catch (e) {
+      state = state.copyWith(loading: false, error: e);
+    }
+  }
+
+  Future<void> refresh() async {
+    state = const _PagedQueryState();
+    await loadMore();
+  }
+}
+
+final _pagedQueryProvider =
+    NotifierProvider.family<_PagedQueryController, _PagedQueryState, String>(
+        _PagedQueryController.new);
 
 class OverviewPage extends ConsumerStatefulWidget {
   final ScopeOverride? scope;
@@ -451,43 +511,103 @@ class _QueryView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final GerritSettings eff = effective ?? ref.watch(settingsProvider);
-    final async = ref.watch(_queryResultsProvider(query));
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, st) => _ErrorPanel(
+    final paged = ref.watch(_pagedQueryProvider(query));
+    final controller = ref.read(_pagedQueryProvider(query).notifier);
+
+    // Cold start: nothing loaded yet, first page in flight.
+    if (paged.changes.isEmpty && paged.loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    // Cold start failed.
+    if (paged.changes.isEmpty && paged.error != null) {
+      return _ErrorPanel(
         query: query,
-        error: e,
-        onRetry: () => ref.invalidate(_queryResultsProvider(query)),
-      ),
-      data: (changes) {
-        if (changes.isEmpty) {
-          return _EmptyHint(message: 'No CLs found for `$query`.');
-        }
-        final filtered = [
-          for (final c in changes)
-            if (passesAttributeFilters(c, selected)) c,
-        ];
-        return RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(_queryResultsProvider(query));
-          },
-          child: filtered.isEmpty
-              ? ListView(children: [
-                  _EmptyHint(
-                    message: '${changes.length} CL(s) hidden by filters.',
-                  ),
-                ])
-              : ListView.separated(
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, i) => ChangeRow(
-                    change: filtered[i],
-                    host: eff.host,
-                    project: eff.project,
-                  ),
+        error: paged.error!,
+        onRetry: controller.refresh,
+      );
+    }
+    // Cold start returned 0 rows.
+    if (paged.changes.isEmpty) {
+      return _EmptyHint(message: 'No CLs found for `$query`.');
+    }
+
+    // Client-side attribute filtering (WIP / Private).
+    final filtered = [
+      for (final c in paged.changes)
+        if (passesAttributeFilters(c, selected)) c,
+    ];
+
+    // Trailing slot: shows either a spinner (loading more), an inline
+    // error with retry, or nothing (when !hasMore and not loading).
+    final hasTrailing = paged.hasMore || paged.loading || paged.error != null;
+
+    Widget trailing() {
+      if (paged.error != null) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Failed to load more: ${paged.error}'),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                  onPressed: controller.loadMore,
                 ),
+              ],
+            ),
+          ),
         );
-      },
+      }
+      // Touching this widget = scrolled near the end => kick off next page.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.loadMore();
+      });
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
+      );
+    }
+
+    final itemCount =
+        filtered.length + (hasTrailing ? 1 : 0) + (filtered.isEmpty ? 1 : 0);
+
+    return RefreshIndicator(
+      onRefresh: controller.refresh,
+      child: ListView.builder(
+        itemCount: itemCount,
+        itemBuilder: (context, i) {
+          // Empty-after-filter notice + still allow load-more sentinel
+          // below it so pagination keeps working through filter hides.
+          if (filtered.isEmpty) {
+            if (i == 0) {
+              return _EmptyHint(
+                message: '${paged.changes.length} CL(s) hidden by filters.',
+              );
+            }
+            return trailing();
+          }
+          if (i >= filtered.length) return trailing();
+          return Column(
+            children: [
+              if (i > 0) const Divider(height: 1),
+              ChangeRow(
+                change: filtered[i],
+                host: eff.host,
+                project: eff.project,
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

@@ -22,7 +22,7 @@ void main() {
         httpClient: mock,
       );
 
-      final changes = await client.queryChanges(
+      final result = await client.queryChanges(
         'status:open project:sdk',
         options: const {ChangeOption.currentRevision},
         limit: 25,
@@ -35,14 +35,48 @@ void main() {
       expect(captured!.queryParametersAll['o'], ['CURRENT_REVISION']);
       expect(captured!.queryParametersAll['n'], ['25']);
 
-      expect(changes, hasLength(2));
-      expect(changes[0].number, 42101);
-      expect(changes[0].subject, 'Add cool feature');
-      expect(changes[0].status, ChangeStatus.newChange);
-      expect(changes[0].owner?.name, 'Ada Lovelace');
-      expect(changes[0].currentRevision,
+      expect(result.changes, hasLength(2));
+      expect(result.hasMore, isFalse);
+      expect(result.changes[0].number, 42101);
+      expect(result.changes[0].subject, 'Add cool feature');
+      expect(result.changes[0].status, ChangeStatus.newChange);
+      expect(result.changes[0].owner?.name, 'Ada Lovelace');
+      expect(result.changes[0].currentRevision,
           'deadbeef0000000000000000000000000000beef');
-      expect(changes[1].status, ChangeStatus.merged);
+      expect(result.changes[1].status, ChangeStatus.merged);
+    });
+
+    test('queryChanges flags hasMore when Gerrit sets _more_changes',
+        () async {
+      final mock = MockClient((request) async {
+        // Trailing item carries `_more_changes: true`.
+        return http.Response(
+          ")]}'\n"
+          '[{"_number":1,"change_id":"I1","subject":"a","status":"NEW","project":"p","branch":"b"},'
+          '{"_number":2,"change_id":"I2","subject":"b","status":"NEW","project":"p","branch":"b","_more_changes":true}]',
+          200,
+        );
+      });
+      final client = GerritClient(
+        host: Uri.parse('https://example-review.googlesource.com'),
+        httpClient: mock,
+      );
+      final result = await client.queryChanges('q', limit: 2);
+      expect(result.changes, hasLength(2));
+      expect(result.hasMore, isTrue);
+    });
+
+    test('queryChanges hasMore is false when no marker', () async {
+      final mock = MockClient(
+        (_) async => http.Response(")]}'\n[]", 200),
+      );
+      final client = GerritClient(
+        host: Uri.parse('https://example.invalid'),
+        httpClient: mock,
+      );
+      final result = await client.queryChanges('q');
+      expect(result.changes, isEmpty);
+      expect(result.hasMore, isFalse);
     });
 
     test('getChangeDetail parses files, labels, messages', () async {
