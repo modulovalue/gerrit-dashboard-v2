@@ -1,25 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gerrit_api/gerrit_api.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../settings/settings_controller.dart';
 import 'status_badge.dart';
 
-class ChangeRow extends StatelessWidget {
+class ChangeRow extends ConsumerWidget {
   final ChangeInfo change;
-  final String host;
+
+  /// The upstream Gerrit web host (NOT the API host). Used as part of
+  /// the per-CL star key so stars stay scoped to a real Gerrit instance.
+  final String webHost;
+
+  /// Display-side project; usually `change.project` works just as well,
+  /// but passing it in keeps the row aware of the dashboard's project
+  /// filter even on cross-project queries.
   final String project;
 
   const ChangeRow({
     super.key,
     required this.change,
-    required this.host,
+    required this.webHost,
     required this.project,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
+    final starred = ref.watch(starredProvider);
+    final key = starKey(webHost, change.project, change.number);
+    final isStarred = starred.contains(key);
+
     final subtitle = StringBuffer()
       ..write(change.owner?.bestLabel ?? 'unknown')
       ..write(' • ')
@@ -36,12 +49,27 @@ class ChangeRow extends StatelessWidget {
     return InkWell(
       onTap: () => context.go('/c/${change.number}'),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        padding: const EdgeInsets.fromLTRB(8, 10, 16, 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            IconButton(
+              tooltip: isStarred ? 'Unstar' : 'Star this CL',
+              icon: Icon(
+                isStarred ? Icons.star : Icons.star_outline,
+                color: isStarred ? Colors.amber.shade700 : null,
+                size: 20,
+              ),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints:
+                  const BoxConstraints(minWidth: 36, minHeight: 36),
+              onPressed: () =>
+                  ref.read(starredProvider.notifier).toggle(key),
+            ),
+            const SizedBox(width: 4),
             SizedBox(
-              width: 96,
+              width: 92,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,

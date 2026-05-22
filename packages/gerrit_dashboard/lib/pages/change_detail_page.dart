@@ -32,6 +32,24 @@ class ChangeDetailPage extends ConsumerWidget {
               context.canPop() ? context.pop() : context.go('/'),
         ),
         actions: [
+          async.maybeWhen(
+            data: (change) {
+              final starred = ref.watch(starredProvider);
+              final key =
+                  starKey(settings.webHost, change.project, change.number);
+              final isStarred = starred.contains(key);
+              return IconButton(
+                tooltip: isStarred ? 'Unstar' : 'Star this CL',
+                icon: Icon(
+                  isStarred ? Icons.star : Icons.star_outline,
+                  color: isStarred ? Colors.amber.shade700 : null,
+                ),
+                onPressed: () =>
+                    ref.read(starredProvider.notifier).toggle(key),
+              );
+            },
+            orElse: () => const SizedBox.shrink(),
+          ),
           IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),

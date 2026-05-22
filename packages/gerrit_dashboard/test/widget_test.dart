@@ -31,7 +31,7 @@ void main() {
       GoRoute(
         path: '/',
         builder: (_, _) => Scaffold(
-          body: ChangeRow(change: change, host: 'h', project: 'sdk'),
+          body: ChangeRow(change: change, webHost: 'h', project: 'sdk'),
         ),
       ),
     ]);

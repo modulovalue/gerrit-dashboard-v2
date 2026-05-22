@@ -278,6 +278,64 @@ final filterProvider =
     NotifierProvider<FilterController, Set<DashboardFilter>>(
         FilterController.new);
 
+// ---------------------------------------------------------------------------
+// Starred CLs (client-side bookmarks). Stars are anonymous: stored only in
+// the browser's localStorage, never sent to Gerrit.
+//
+// The key shape `<webHost>:<project>:<number>` lets stars stay scoped to
+// the actual Gerrit instance + repo, so the same CL number across projects
+// doesn't collide.
+// ---------------------------------------------------------------------------
+
+const _kStarred = 'gerrit.starred';
+
+String starKey(String webHost, String project, int number) =>
+    '$webHost:$project:$number';
+
+class StarredController extends Notifier<Set<String>> {
+  SharedPreferences? _prefs;
+
+  @override
+  Set<String> build() {
+    _load();
+    return const {};
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    state = (prefs.getStringList(_kStarred) ?? const []).toSet();
+  }
+
+  Future<void> _persist() async {
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    await prefs.setStringList(_kStarred, state.toList());
+  }
+
+  void toggle(String key) {
+    final next = {...state};
+    if (!next.add(key)) next.remove(key);
+    state = next;
+    _persist();
+  }
+
+  /// Numbers of CLs starred under the given `webHost:project` scope.
+  List<int> numbersFor(String webHost, String project) {
+    final prefix = '$webHost:$project:';
+    final out = <int>[];
+    for (final k in state) {
+      if (!k.startsWith(prefix)) continue;
+      final n = int.tryParse(k.substring(prefix.length));
+      if (n != null) out.add(n);
+    }
+    return out;
+  }
+}
+
+final starredProvider = NotifierProvider<StarredController, Set<String>>(
+    StarredController.new);
+
 /// Builds the Gerrit-side status clause from the currently-enabled
 /// status chips. Returns `null` when *no* status chips are selected,
 /// which the caller should treat as "show no results".

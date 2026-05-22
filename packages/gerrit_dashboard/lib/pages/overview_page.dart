@@ -13,19 +13,29 @@ class _Tab {
   final String label;
   final String? query;
   final bool isCustom;
-  const _Tab.query(this.label, String this.query) : isCustom = false;
+  final bool isStarredEmpty;
+  const _Tab.query(this.label, String this.query)
+      : isCustom = false,
+        isStarredEmpty = false;
   const _Tab.custom(this.label)
       : query = null,
-        isCustom = true;
+        isCustom = true,
+        isStarredEmpty = false;
+  const _Tab.starredEmpty(this.label)
+      : query = null,
+        isCustom = false,
+        isStarredEmpty = true;
 }
 
 /// Build the tab list. `statusClause` is what the filter chips produce
 /// for the server query; when it is `null` (no status chips active),
-/// the All / Mine tabs render an empty hint.
+/// the All / Mine tabs render an empty hint. `starredNumbers` is the
+/// set of locally-starred CL numbers in the current host:project scope.
 List<_Tab> _buildTabs(
   GerritSettings effective, {
   required bool scoped,
   required String? statusClause,
+  required List<int> starredNumbers,
 }) {
   final project = effective.project;
   final user = effective.user;
@@ -43,6 +53,13 @@ List<_Tab> _buildTabs(
     if (!scoped && user.isNotEmpty)
       _Tab.query('Mine', composeQuery(withOwner: true) ?? ''),
     _Tab.query('All', composeQuery(withOwner: scoped) ?? ''),
+    if (starredNumbers.isEmpty)
+      const _Tab.starredEmpty('Starred')
+    else
+      _Tab.query(
+        'Starred',
+        '(${starredNumbers.map((n) => 'change:$n').join(' OR ')})',
+      ),
     const _Tab.custom('Custom'),
   ];
 }
@@ -182,11 +199,18 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
 
     final selectedFilters = ref.watch(filterProvider);
     final statusClause = buildStatusClause(selectedFilters);
+    // Watch starredProvider so the Starred tab rebuilds when stars
+    // change, then derive the project-scoped number list.
+    ref.watch(starredProvider);
+    final starredNumbers = ref
+        .read(starredProvider.notifier)
+        .numbersFor(effective.webHost, effective.project);
 
     final tabs = _buildTabs(
       effective,
       scoped: scoped,
       statusClause: statusClause,
+      starredNumbers: starredNumbers,
     );
     final controller = _controllerFor(tabs.length);
     final shareEnabled = effective.user.isNotEmpty;
@@ -261,6 +285,8 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
                 currentQuery: _customQuery,
                 selected: selectedFilters,
               )
+            else if (t.isStarredEmpty)
+              const _StarredEmptyHint()
             else if (t.query!.isEmpty)
               const _NoStatusHint()
             else
@@ -361,6 +387,31 @@ class _ChipTile extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StarredEmptyHint extends StatelessWidget {
+  const _StarredEmptyHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.star_outline, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'No starred CLs yet.\nTap the star icon on any change to bookmark it.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ],
         ),
       ),
     );
@@ -601,7 +652,7 @@ class _QueryView extends ConsumerWidget {
               if (i > 0) const Divider(height: 1),
               ChangeRow(
                 change: filtered[i],
-                host: eff.host,
+                webHost: eff.webHost,
                 project: eff.project,
               ),
             ],
