@@ -179,15 +179,30 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
   Future<void> _share(GerritSettings effective) async {
     final base = _appBase();
     final path = base.path.endsWith('/') ? base.path : '${base.path}/';
-    final url = base.replace(
+    // Deliberately project-less: recipients see the user's CLs in
+    // whichever project they themselves have configured, which is
+    // closer to "show me their dashboard" than "lock them to mine".
+    final url = Uri(
+      scheme: base.scheme,
+      host: base.host,
+      port: base.hasPort ? base.port : 0,
       path: '${path}u/${Uri.encodeComponent(effective.user)}',
-      queryParameters: {'project': effective.project},
     ).toString();
     await Clipboard.setData(ClipboardData(text: url));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Copied: $url')),
     );
+  }
+
+  void _refreshCurrent(List<_Tab> tabs) {
+    final i = _tabs?.index ?? 0;
+    if (i < 0 || i >= tabs.length) return;
+    final t = tabs[i];
+    if (t.isStarredEmpty) return;
+    final q = t.isCustom ? _customQuery : t.query;
+    if (q == null || q.isEmpty) return;
+    ref.read(_pagedQueryProvider(q).notifier).refresh();
   }
 
   @override
@@ -230,6 +245,11 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Refresh current tab',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _refreshCurrent(tabs),
+          ),
           IconButton(
             tooltip: shareEnabled
                 ? 'Copy shareable link'

@@ -47,7 +47,7 @@ const _kSchemaVersion = 'gerrit.schemaVersion';
 
 /// Bump when defaults change in a way that should override a user's
 /// previously persisted values.
-const _currentSchemaVersion = 4;
+const _currentSchemaVersion = 5;
 
 @immutable
 class GerritSettings {
@@ -110,6 +110,8 @@ class SettingsController extends Notifier<GerritSettings> {
       await prefs.remove(_kHost);
       await prefs.remove(_kScheme);
       await prefs.remove(_kWebHost);
+      // v5: project no longer user-editable; force back to default.
+      await prefs.remove(_kProject);
       await prefs.setInt(_kSchemaVersion, _currentSchemaVersion);
     }
     state = GerritSettings(

@@ -12,27 +12,23 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  late final TextEditingController _project;
   late final TextEditingController _user;
 
   @override
   void initState() {
     super.initState();
     final settings = ref.read(settingsProvider);
-    _project = TextEditingController(text: settings.project);
     _user = TextEditingController(text: settings.user);
   }
 
   @override
   void dispose() {
-    _project.dispose();
     _user.dispose();
     super.dispose();
   }
 
   Future<void> _apply() async {
     await ref.read(settingsProvider.notifier).update(
-          project: _project.text.trim(),
           user: _user.text.trim(),
         );
     if (mounted) {
@@ -61,23 +57,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           Text('Defaults', style: text.titleMedium),
           const SizedBox(height: 4),
           Text(
-            'This deployment is hardcoded to dart-review.googlesource.com '
-            '(Dart SDK Gerrit). Other Gerrit instances need their own '
+            'This deployment is hardcoded to dart-review.googlesource.com, '
+            'sdk project. Other Gerrits or other projects need their own '
             'deployments.',
             style: text.bodySmall,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _project,
-            decoration: const InputDecoration(
-              isDense: true,
-              labelText: 'Default project',
-              hintText: 'sdk',
-              helperText:
-                  'Gerrit project name. Examples: sdk, linter, dart_style, '
-                  'tools.',
-              border: OutlineInputBorder(),
-            ),
           ),
           const SizedBox(height: 12),
           TextField(
