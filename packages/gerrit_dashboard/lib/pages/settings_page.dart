@@ -4,32 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../settings/settings_controller.dart';
 
-/// Curated host/project presets surfaced as quick chips. This deployment
-/// is Dart-SDK only; other Gerrit instances need their own deployments
-/// (the same-origin CORS proxy on lab.modulovalue.com only forwards to
-/// dart-review.googlesource.com).
-const _presets = <_Preset>[
-  _Preset(
-    name: 'Dart SDK',
-    project: 'sdk',
-    host: 'dart-review.googlesource.com',
-    description: 'github.com/dart-lang/sdk mirror',
-  ),
-];
-
-class _Preset {
-  final String name;
-  final String host;
-  final String project;
-  final String description;
-  const _Preset({
-    required this.name,
-    required this.host,
-    required this.project,
-    required this.description,
-  });
-}
-
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
@@ -38,9 +12,6 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  late final TextEditingController _scheme;
-  late final TextEditingController _host;
-  late final TextEditingController _webHost;
   late final TextEditingController _project;
   late final TextEditingController _user;
 
@@ -48,18 +19,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void initState() {
     super.initState();
     final settings = ref.read(settingsProvider);
-    _scheme = TextEditingController(text: settings.scheme);
-    _host = TextEditingController(text: settings.host);
-    _webHost = TextEditingController(text: settings.webHost);
     _project = TextEditingController(text: settings.project);
     _user = TextEditingController(text: settings.user);
   }
 
   @override
   void dispose() {
-    _scheme.dispose();
-    _host.dispose();
-    _webHost.dispose();
     _project.dispose();
     _user.dispose();
     super.dispose();
@@ -67,9 +32,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _apply() async {
     await ref.read(settingsProvider.notifier).update(
-          scheme: _scheme.text.trim(),
-          host: _host.text.trim(),
-          webHost: _webHost.text.trim(),
           project: _project.text.trim(),
           user: _user.text.trim(),
         );
@@ -78,19 +40,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         const SnackBar(content: Text('Settings saved')),
       );
     }
-  }
-
-  void _applyPreset(_Preset preset) {
-    // Resets to the auto-detected defaults, same-origin proxy in web
-    // release, localhost:8080 dev proxy in debug, direct upstream on
-    // native. webHost stays as the real Gerrit so "Open in Gerrit"
-    // links work.
-    setState(() {
-      _scheme.text = defaultScheme;
-      _host.text = defaultHost;
-      _webHost.text = preset.host;
-      _project.text = preset.project;
-    });
   }
 
   @override
@@ -109,55 +58,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         children: [
-          Text('Gerrit server', style: text.titleMedium),
+          Text('Defaults', style: text.titleMedium),
           const SizedBox(height: 4),
           Text(
-            'Anonymous read-only Gerrit endpoint. '
-            'In debug builds the default points at the local dev CORS proxy '
-            '(http://localhost:8080); the proxy forwards to '
-            'dart-review.googlesource.com.',
+            'This deployment is hardcoded to dart-review.googlesource.com '
+            '(Dart SDK Gerrit). Other Gerrit instances need their own '
+            'deployments.',
             style: text.bodySmall,
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              SizedBox(
-                width: 90,
-                child: TextField(
-                  controller: _scheme,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: 'Scheme',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _host,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: 'Host',
-                    hintText: 'localhost:8080',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _webHost,
-            decoration: const InputDecoration(
-              isDense: true,
-              labelText: 'Gerrit web UI host',
-              hintText: 'dart-review.googlesource.com',
-              helperText:
-                  'Used by "Open in Gerrit" links. The upstream Gerrit '
-                  'site, not the (possibly proxied) API endpoint above.',
-              border: OutlineInputBorder(),
-            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -166,6 +73,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               isDense: true,
               labelText: 'Default project',
               hintText: 'sdk',
+              helperText:
+                  'Gerrit project name. Examples: sdk, linter, dart_style, '
+                  'tools.',
               border: OutlineInputBorder(),
             ),
           ),
@@ -181,21 +91,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   'Leave blank to hide the Mine tab.',
               border: OutlineInputBorder(),
             ),
-          ),
-          const SizedBox(height: 16),
-          Text('Presets', style: text.titleSmall),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final preset in _presets)
-                ActionChip(
-                  label: Text(preset.name),
-                  tooltip: '${preset.host} / ${preset.project}',
-                  onPressed: () => _applyPreset(preset),
-                ),
-            ],
           ),
           const SizedBox(height: 16),
           Align(
@@ -236,10 +131,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 6),
           const Text(
             'gerrit-dashboard-v2, read-only Gerrit dashboard built in Flutter '
-            '(Wasm). Anonymous endpoints only. To talk to *.googlesource.com '
-            'hosts from a browser you need a CORS proxy; the bundled '
-            '`dart run gerrit_dashboard:dev_proxy` does the job for local '
-            'development.',
+            '(Wasm). Anonymous endpoints, Dart SDK only.',
           ),
         ],
       ),

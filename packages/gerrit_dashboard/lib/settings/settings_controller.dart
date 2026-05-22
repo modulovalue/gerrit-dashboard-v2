@@ -47,7 +47,7 @@ const _kSchemaVersion = 'gerrit.schemaVersion';
 
 /// Bump when defaults change in a way that should override a user's
 /// previously persisted values.
-const _currentSchemaVersion = 3;
+const _currentSchemaVersion = 4;
 
 @immutable
 class GerritSettings {
