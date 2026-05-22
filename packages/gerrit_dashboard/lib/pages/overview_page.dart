@@ -303,6 +303,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
                 initialProject: effective.project,
                 onSubmit: (q) => setState(() => _customQuery = q),
                 currentQuery: _customQuery,
+                statusClause: statusClause,
                 selected: selectedFilters,
               )
             else if (t.isStarredEmpty)
@@ -513,6 +514,7 @@ class _CustomQueryTab extends StatelessWidget {
   final String initialProject;
   final void Function(String) onSubmit;
   final String currentQuery;
+  final String? statusClause;
   final Set<DashboardFilter> selected;
 
   const _CustomQueryTab({
@@ -520,8 +522,19 @@ class _CustomQueryTab extends StatelessWidget {
     required this.initialProject,
     required this.onSubmit,
     required this.currentQuery,
+    required this.statusClause,
     required this.selected,
   });
+
+  String _composed() {
+    if (currentQuery.isEmpty) return '';
+    // When the user has typed an explicit status: clause, respect it
+    // verbatim, don't append chip-derived statuses that would conflict.
+    // Otherwise prepend whatever the chips currently produce.
+    final userTypedStatus = currentQuery.contains('status:');
+    if (statusClause == null || userTypedStatus) return currentQuery;
+    return '$currentQuery $statusClause';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -552,14 +565,28 @@ class _CustomQueryTab extends StatelessWidget {
             ],
           ),
         ),
+        if (currentQuery.isNotEmpty &&
+            statusClause != null &&
+            !currentQuery.contains('status:'))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Text(
+              'Composed: $currentQuery $statusClause',
+              style: Theme.of(context).textTheme.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         Expanded(
           child: currentQuery.isEmpty
               ? const _EmptyHint(
                   message:
-                      'Type a Gerrit query above (e.g. `owner:alice status:open`).',
+                      'Type a Gerrit query above (e.g. `owner:alice`). '
+                      'Status chips above are composed in automatically; '
+                      'WIP/Private chips filter results client-side.',
                 )
               : _QueryView(
-                  query: currentQuery,
+                  query: _composed(),
                   effective: null,
                   selected: selected,
                 ),
