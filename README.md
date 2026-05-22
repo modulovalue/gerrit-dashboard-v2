@@ -14,6 +14,10 @@
   <img src="docs/screenshot.png" alt="Gerrit Dart Dashboard screenshot" width="900">
 </p>
 
+## What is Gerrit?
+
+[Gerrit](https://www.gerritcodereview.com/) is a web-based code review system originally built at Google and now used by projects like Chromium, Android, Go, and the Dart SDK. Contributors push commits as **changes** (CLs); each CL flows through review, automated verification, and a `Code-Review +2` approval before being submitted to the repository. The Dart SDK lives on the public Gerrit instance at [dart-review.googlesource.com](https://dart-review.googlesource.com).
+
 ---
 
 ## What it does
