@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../settings/settings_controller.dart';
+
+const _repoUrl = 'https://github.com/modulovalue/gerrit-dashboard-v2';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -40,7 +43,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(settingsProvider);
     final text = Theme.of(context).textTheme;
 
     return Scaffold(
@@ -85,36 +87,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const Divider(height: 48),
-          Text('Appearance', style: text.titleMedium),
-          const SizedBox(height: 8),
-          SegmentedButton<ThemeMode>(
-            segments: const [
-              ButtonSegment(
-                value: ThemeMode.system,
-                label: Text('System'),
-                icon: Icon(Icons.brightness_auto),
-              ),
-              ButtonSegment(
-                value: ThemeMode.light,
-                label: Text('Light'),
-                icon: Icon(Icons.light_mode),
-              ),
-              ButtonSegment(
-                value: ThemeMode.dark,
-                label: Text('Dark'),
-                icon: Icon(Icons.dark_mode),
-              ),
-            ],
-            selected: {settings.themeMode},
-            onSelectionChanged: (set) =>
-                ref.read(settingsProvider.notifier).update(themeMode: set.first),
-          ),
-          const Divider(height: 48),
           Text('About', style: text.titleMedium),
           const SizedBox(height: 6),
           const Text(
             'gerrit-dashboard-v2, read-only Gerrit dashboard built in Flutter '
             '(Wasm). Anonymous endpoints, Dart SDK only.',
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              alignment: Alignment.centerLeft,
+            ),
+            icon: const Icon(Icons.code, size: 18),
+            label: const Text(_repoUrl),
+            onPressed: () => launchUrl(
+              Uri.parse(_repoUrl),
+              webOnlyWindowName: '_blank',
+            ),
           ),
         ],
       ),
