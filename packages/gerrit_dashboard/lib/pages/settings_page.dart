@@ -1,8 +1,29 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:web/web.dart' as web;
 
 import '../settings/settings_controller.dart';
+
+/// Routes a Gerrit upstream host through the local proxy when one is
+/// available, otherwise returns it verbatim.
+///
+/// - Web release: same-origin proxy at `<baseURI>gerrit-api/<upstream>`.
+/// - Debug: dev_proxy at `localhost:8080/<upstream>` (dev_proxy
+///   understands the upstream-in-path convention too).
+/// - Native release: direct, no proxy.
+({String scheme, String host}) _proxyFor(String upstream) {
+  if (kDebugMode) {
+    return (scheme: 'http', host: 'localhost:8080/$upstream');
+  }
+  if (kIsWeb) {
+    final base = Uri.parse(web.document.baseURI);
+    final path = base.path.endsWith('/') ? base.path : '${base.path}/';
+    return (scheme: base.scheme, host: '${base.host}${path}gerrit-api/$upstream');
+  }
+  return (scheme: 'https', host: upstream);
+}
 
 /// Curated host/project presets surfaced as quick chips.
 const _presets = <_Preset>[
@@ -96,9 +117,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   void _applyPreset(_Preset preset) {
+    final proxied = _proxyFor(preset.host);
     setState(() {
-      _scheme.text = 'https';
-      _host.text = preset.host;
+      _scheme.text = proxied.scheme;
+      _host.text = proxied.host;
       _webHost.text = preset.host;
       _project.text = preset.project;
     });
