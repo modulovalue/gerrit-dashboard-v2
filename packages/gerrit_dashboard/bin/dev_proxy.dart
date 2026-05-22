@@ -74,7 +74,10 @@ Future<void> _handle(
     return;
   }
 
-  final upstreamUri = _resolveUpstream(request.uri, upstream);
+  final upstreamUri = upstream.replace(
+    path: request.uri.path,
+    query: request.uri.hasQuery ? request.uri.query : null,
+  );
 
   try {
     final upstreamRequest = await client.openUrl(request.method, upstreamUri);
@@ -95,7 +98,7 @@ Future<void> _handle(
         upstreamRequest.headers.add(name, v);
       }
     });
-    upstreamRequest.headers.set('Host', upstreamUri.authority);
+    upstreamRequest.headers.set('Host', upstreamUri.host);
 
     if (request.method != 'GET' && request.method != 'HEAD') {
       await upstreamRequest.addStream(request);
@@ -132,29 +135,6 @@ Future<void> _handle(
     response.write('proxy error: $e');
     await response.close();
   }
-}
-
-/// If the first path segment looks like a `*-review.googlesource.com`
-/// host, treat it as the upstream for this request (matching the prod
-/// nginx convention). Otherwise fall back to the default upstream
-/// configured at startup.
-final _upstreamHostRe = RegExp(r'^[a-z0-9-]+-review\.googlesource\.com$');
-
-Uri _resolveUpstream(Uri requestUri, Uri defaultUpstream) {
-  final segs = requestUri.pathSegments;
-  if (segs.isNotEmpty && _upstreamHostRe.hasMatch(segs.first)) {
-    final remainder = segs.length == 1 ? '/' : '/${segs.skip(1).join('/')}';
-    return Uri(
-      scheme: 'https',
-      host: segs.first,
-      path: remainder,
-      query: requestUri.hasQuery ? requestUri.query : null,
-    );
-  }
-  return defaultUpstream.replace(
-    path: requestUri.path,
-    query: requestUri.hasQuery ? requestUri.query : null,
-  );
 }
 
 void _writeCorsHeaders(HttpResponse response, HttpRequest request) {

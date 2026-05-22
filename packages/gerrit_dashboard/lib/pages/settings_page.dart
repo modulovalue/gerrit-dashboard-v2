@@ -1,55 +1,19 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:web/web.dart' as web;
 
 import '../settings/settings_controller.dart';
 
-/// Routes a Gerrit upstream host through the local proxy when one is
-/// available, otherwise returns it verbatim.
-///
-/// - Web release: same-origin proxy at `<baseURI>gerrit-api/<upstream>`.
-/// - Debug: dev_proxy at `localhost:8080/<upstream>` (dev_proxy
-///   understands the upstream-in-path convention too).
-/// - Native release: direct, no proxy.
-({String scheme, String host}) _proxyFor(String upstream) {
-  if (kDebugMode) {
-    return (scheme: 'http', host: 'localhost:8080/$upstream');
-  }
-  if (kIsWeb) {
-    final base = Uri.parse(web.document.baseURI);
-    final path = base.path.endsWith('/') ? base.path : '${base.path}/';
-    return (scheme: base.scheme, host: '${base.host}${path}gerrit-api/$upstream');
-  }
-  return (scheme: 'https', host: upstream);
-}
-
-/// Curated host/project presets surfaced as quick chips.
+/// Curated host/project presets surfaced as quick chips. This deployment
+/// is Dart-SDK only; other Gerrit instances need their own deployments
+/// (the same-origin CORS proxy on lab.modulovalue.com only forwards to
+/// dart-review.googlesource.com).
 const _presets = <_Preset>[
   _Preset(
     name: 'Dart SDK',
     project: 'sdk',
     host: 'dart-review.googlesource.com',
     description: 'github.com/dart-lang/sdk mirror',
-  ),
-  _Preset(
-    name: 'Flutter',
-    project: 'flutter',
-    host: 'flutter-review.googlesource.com',
-    description: 'github.com/flutter/flutter mirror',
-  ),
-  _Preset(
-    name: 'Chromium',
-    project: 'chromium/src',
-    host: 'chromium-review.googlesource.com',
-    description: 'chromium/src',
-  ),
-  _Preset(
-    name: 'Go',
-    project: 'go',
-    host: 'go-review.googlesource.com',
-    description: 'github.com/golang/go mirror',
   ),
 ];
 
@@ -117,10 +81,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   void _applyPreset(_Preset preset) {
-    final proxied = _proxyFor(preset.host);
+    // Resets to the auto-detected defaults, same-origin proxy in web
+    // release, localhost:8080 dev proxy in debug, direct upstream on
+    // native. webHost stays as the real Gerrit so "Open in Gerrit"
+    // links work.
     setState(() {
-      _scheme.text = proxied.scheme;
-      _host.text = proxied.host;
+      _scheme.text = defaultScheme;
+      _host.text = defaultHost;
       _webHost.text = preset.host;
       _project.text = preset.project;
     });
