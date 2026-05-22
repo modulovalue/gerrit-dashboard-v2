@@ -197,3 +197,105 @@ class ScopeOverride {
     );
   }
 }
+
+/// User-facing filter chips. Status filters (open/merged/abandoned)
+/// contribute a clause to the server-side Gerrit query; attribute
+/// filters (wip/private) are applied client-side after results land.
+enum DashboardFilter {
+  open('Open', statusClause: 'status:open'),
+  merged('Merged', statusClause: 'status:merged'),
+  abandoned('Abandoned', statusClause: 'status:abandoned'),
+  wip('WIP'),
+  private('Private');
+
+  final String label;
+  final String? statusClause;
+  const DashboardFilter(this.label, {this.statusClause});
+
+  bool get isStatus => statusClause != null;
+  bool get isAttribute => statusClause == null;
+}
+
+const Set<DashboardFilter> defaultFilters = {
+  DashboardFilter.open,
+  DashboardFilter.merged,
+  DashboardFilter.wip,
+  DashboardFilter.private,
+  // Abandoned is intentionally NOT in the default set.
+};
+
+const _kFilters = 'gerrit.filters';
+
+class FilterController extends Notifier<Set<DashboardFilter>> {
+  SharedPreferences? _prefs;
+
+  @override
+  Set<DashboardFilter> build() {
+    _load();
+    return {...defaultFilters};
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final raw = prefs.getStringList(_kFilters);
+    if (raw == null) return;
+    final byName = {for (final f in DashboardFilter.values) f.name: f};
+    state = {
+      for (final name in raw) ?byName[name],
+    };
+  }
+
+  Future<void> _persist() async {
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    await prefs.setStringList(
+      _kFilters,
+      state.map((f) => f.name).toList(),
+    );
+  }
+
+  void toggle(DashboardFilter f) {
+    final next = {...state};
+    if (next.contains(f)) {
+      next.remove(f);
+    } else {
+      next.add(f);
+    }
+    state = next;
+    _persist();
+  }
+
+  /// Cmd/Ctrl-click semantics: select only this filter, deselect the rest.
+  /// Idempotent, re-applying when already exclusive is a no-op.
+  void selectOnly(DashboardFilter f) {
+    state = {f};
+    _persist();
+  }
+}
+
+final filterProvider =
+    NotifierProvider<FilterController, Set<DashboardFilter>>(
+        FilterController.new);
+
+/// Builds the Gerrit-side status clause from the currently-enabled
+/// status chips. Returns `null` when *no* status chips are selected,
+/// which the caller should treat as "show no results".
+String? buildStatusClause(Set<DashboardFilter> selected) {
+  final statuses = [
+    for (final f in selected)
+      if (f.isStatus) f.statusClause!,
+  ];
+  if (statuses.isEmpty) return null;
+  if (statuses.length == 1) return statuses.first;
+  return '(${statuses.join(' OR ')})';
+}
+
+/// True when [c] should be visible given the active attribute chips.
+bool passesAttributeFilters(ChangeInfo c, Set<DashboardFilter> selected) {
+  if (c.work && !selected.contains(DashboardFilter.wip)) return false;
+  if (c.isPrivate && !selected.contains(DashboardFilter.private)) {
+    return false;
+  }
+  return true;
+}

@@ -13,61 +13,36 @@ class _Tab {
   final String label;
   final String? query;
   final bool isCustom;
-  final bool isMineHint;
-  const _Tab.query(this.label, String this.query)
-      : isCustom = false,
-        isMineHint = false;
+  const _Tab.query(this.label, String this.query) : isCustom = false;
   const _Tab.custom(this.label)
       : query = null,
-        isCustom = true,
-        isMineHint = false;
-  const _Tab.mineHint(this.label)
-      : query = null,
-        isCustom = false,
-        isMineHint = true;
+        isCustom = true;
 }
 
-/// Orthogonal-to-status attributes a change can have. Each is exposed
-/// as a toggleable chip below the tab bar: selected = include, cleared
-/// = exclude. Status itself is already handled by the tabs.
-enum ChangeAttribute {
-  wip('WIP', 'Work-in-progress'),
-  private('Private', 'Private changes');
+/// Build the tab list. `statusClause` is what the filter chips produce
+/// for the server query; when it is `null` (no status chips active),
+/// the All / Mine tabs render an empty hint.
+List<_Tab> _buildTabs(
+  GerritSettings effective, {
+  required bool scoped,
+  required String? statusClause,
+}) {
+  final project = effective.project;
+  final user = effective.user;
 
-  final String label;
-  final String description;
-  const ChangeAttribute(this.label, this.description);
-
-  bool present(ChangeInfo c) => switch (this) {
-        ChangeAttribute.wip => c.work,
-        ChangeAttribute.private => c.isPrivate,
-      };
-}
-
-bool _passesFilters(ChangeInfo c, Set<ChangeAttribute> included) {
-  for (final attr in ChangeAttribute.values) {
-    if (attr.present(c) && !included.contains(attr)) return false;
+  String? composeQuery({required bool withOwner}) {
+    if (statusClause == null) return null;
+    final parts = <String>[statusClause, 'project:$project'];
+    if (withOwner && user.isNotEmpty) parts.add('owner:$user');
+    return parts.join(' ');
   }
-  return true;
-}
-
-List<_Tab> _buildTabs(GerritSettings settings, {required bool scoped}) {
-  final project = settings.project;
-  final user = settings.user;
-
-  String withOwner(String q) => user.isEmpty ? q : '$q owner:$user';
 
   return [
-    // When the URL has scoped the whole view to a user, the "Mine" tab
-    // is redundant: every other tab is already filtered by them.
-    if (!scoped)
-      if (user.isNotEmpty)
-        _Tab.query('Mine', 'owner:$user project:$project')
-      else
-        const _Tab.mineHint('Mine'),
-    _Tab.query('Open', withOwner('status:open project:$project')),
-    _Tab.query('Merged', withOwner('status:merged project:$project')),
-    _Tab.query('Abandoned', withOwner('status:abandoned project:$project')),
+    // Mine tab: only when there's a user and we're not already scoped
+    // (a `/u/:user` URL already implies "mine for that user").
+    if (!scoped && user.isNotEmpty)
+      _Tab.query('Mine', composeQuery(withOwner: true) ?? ''),
+    _Tab.query('All', composeQuery(withOwner: scoped) ?? ''),
     const _Tab.custom('Custom'),
   ];
 }
@@ -99,9 +74,6 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
   int _lastLength = 0;
   final _customCtrl = TextEditingController();
   String _customQuery = '';
-  // Default: include everything. Tapping a chip off hides that
-  // attribute from the currently-rendered list.
-  final Set<ChangeAttribute> _included = {...ChangeAttribute.values};
 
   @override
   void dispose() {
@@ -147,7 +119,15 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
     final scope = widget.scope;
     final scoped = scope != null && !scope.isEmpty;
     final effective = scoped ? scope.applyTo(settings) : settings;
-    final tabs = _buildTabs(effective, scoped: scoped);
+
+    final selectedFilters = ref.watch(filterProvider);
+    final statusClause = buildStatusClause(selectedFilters);
+
+    final tabs = _buildTabs(
+      effective,
+      scoped: scoped,
+      statusClause: statusClause,
+    );
     final controller = _controllerFor(tabs.length);
     final shareEnabled = effective.user.isNotEmpty;
 
@@ -180,7 +160,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight((scoped ? 28 : 0) + 36 + 36),
+          preferredSize: Size.fromHeight((scoped ? 28 : 0) + 36 + 40),
           child: Column(
             children: [
               if (scoped) _ScopeBanner(effective: effective),
@@ -204,16 +184,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
                   ],
                 ),
               ),
-              _FilterChipsRow(
-                included: _included,
-                onToggle: (attr) => setState(() {
-                  if (_included.contains(attr)) {
-                    _included.remove(attr);
-                  } else {
-                    _included.add(attr);
-                  }
-                }),
-              ),
+              const _FilterChipsRow(),
             ],
           ),
         ),
@@ -228,15 +199,15 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
                 initialProject: effective.project,
                 onSubmit: (q) => setState(() => _customQuery = q),
                 currentQuery: _customQuery,
-                included: _included,
+                selected: selectedFilters,
               )
-            else if (t.isMineHint)
-              const _MineHint()
+            else if (t.query!.isEmpty)
+              const _NoStatusHint()
             else
               _QueryView(
                 query: t.query!,
                 effective: effective,
-                included: _included,
+                selected: selectedFilters,
               ),
         ],
       ),
@@ -244,35 +215,118 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
   }
 }
 
-class _FilterChipsRow extends StatelessWidget {
-  final Set<ChangeAttribute> included;
-  final void Function(ChangeAttribute) onToggle;
-  const _FilterChipsRow({required this.included, required this.onToggle});
+class _FilterChipsRow extends ConsumerWidget {
+  const _FilterChipsRow();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(filterProvider);
+    final controller = ref.read(filterProvider.notifier);
     return SizedBox(
-      height: 36,
+      height: 40,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         children: [
-          for (final attr in ChangeAttribute.values) ...[
-            FilterChip(
-              label: Text(attr.label),
-              tooltip: included.contains(attr)
-                  ? 'Hide ${attr.description}'
-                  : 'Show ${attr.description}',
-              selected: included.contains(attr),
-              onSelected: (_) => onToggle(attr),
-              visualDensity: VisualDensity.compact,
-              labelStyle: const TextStyle(fontSize: 12),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
+          for (final f in DashboardFilter.values) ...[
+            _ChipTile(
+              filter: f,
+              selected: selected.contains(f),
+              onTap: () {
+                final hk = HardwareKeyboard.instance;
+                final modifier = hk.isMetaPressed || hk.isControlPressed;
+                if (modifier) {
+                  controller.selectOnly(f);
+                } else {
+                  controller.toggle(f);
+                }
+              },
             ),
             const SizedBox(width: 6),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ChipTile extends StatelessWidget {
+  final DashboardFilter filter;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ChipTile({
+    required this.filter,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Custom InkWell wrapping a chip-styled container, because
+    // FilterChip's onSelected/onTap doesn't expose modifier state.
+    // The visual is intentionally close to a Material FilterChip.
+    final scheme = Theme.of(context).colorScheme;
+    final bg = selected ? scheme.secondaryContainer : scheme.surface;
+    final fg =
+        selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+    final border = selected ? scheme.secondary : scheme.outlineVariant;
+
+    return Tooltip(
+      message: selected
+          ? 'Hide ${filter.label}  (Cmd+click: only this)'
+          : 'Show ${filter.label}  (Cmd+click: only this)',
+      child: Material(
+        color: bg,
+        shape: StadiumBorder(side: BorderSide(color: border)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (selected) ...[
+                  Icon(Icons.check, size: 14, color: fg),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  filter.label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: fg,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoStatusHint extends StatelessWidget {
+  const _NoStatusHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.filter_alt_off, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'No status filters enabled.\nTurn on Open, Merged, or Abandoned above.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -323,50 +377,19 @@ class _ScopeBanner extends StatelessWidget {
   }
 }
 
-class _MineHint extends StatelessWidget {
-  const _MineHint();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.person_outline, size: 48),
-            const SizedBox(height: 12),
-            Text(
-              'Set a default user in Settings to enable the Mine tab.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              icon: const Icon(Icons.settings),
-              label: const Text('Open Settings'),
-              onPressed: () => context.go('/settings'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _CustomQueryTab extends StatelessWidget {
   final TextEditingController controller;
   final String initialProject;
   final void Function(String) onSubmit;
   final String currentQuery;
-  final Set<ChangeAttribute> included;
+  final Set<DashboardFilter> selected;
 
   const _CustomQueryTab({
     required this.controller,
     required this.initialProject,
     required this.onSubmit,
     required this.currentQuery,
-    required this.included,
+    required this.selected,
   });
 
   @override
@@ -407,7 +430,7 @@ class _CustomQueryTab extends StatelessWidget {
               : _QueryView(
                   query: currentQuery,
                   effective: null,
-                  included: included,
+                  selected: selected,
                 ),
         ),
       ],
@@ -418,11 +441,11 @@ class _CustomQueryTab extends StatelessWidget {
 class _QueryView extends ConsumerWidget {
   final String query;
   final GerritSettings? effective;
-  final Set<ChangeAttribute> included;
+  final Set<DashboardFilter> selected;
   const _QueryView({
     required this.query,
     required this.effective,
-    required this.included,
+    required this.selected,
   });
 
   @override
@@ -442,7 +465,7 @@ class _QueryView extends ConsumerWidget {
         }
         final filtered = [
           for (final c in changes)
-            if (_passesFilters(c, included)) c,
+            if (passesAttributeFilters(c, selected)) c,
         ];
         return RefreshIndicator(
           onRefresh: () async {
