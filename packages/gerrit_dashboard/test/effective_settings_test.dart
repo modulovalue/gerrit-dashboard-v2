@@ -1,50 +1,40 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gerrit_dashboard/settings/settings_controller.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+GerritSettings _base() => const GerritSettings(
+      scheme: 'https',
+      host: 'h.example.com',
+      project: 'sdk',
+      user: 'bob',
+    );
 
 void main() {
-  setUp(() {
-    SharedPreferences.setMockInitialValues({});
+  test('empty override is identity', () {
+    final base = _base();
+    expect(const ScopeOverride().applyTo(base).user, 'bob');
+    expect(const ScopeOverride(user: '').applyTo(base).user, 'bob');
   });
 
-  test('no override -> effective == base', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final base = container.read(settingsProvider);
-    final effective = container.read(effectiveSettingsProvider);
-    expect(effective.user, base.user);
-    expect(effective.project, base.project);
-  });
-
-  test('user override is applied without persisting', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    container.read(scopeOverrideProvider.notifier).state =
-        const ScopeOverride(user: 'alice');
-    final effective = container.read(effectiveSettingsProvider);
-    expect(effective.user, 'alice');
-    // The persisted settings are untouched.
-    expect(container.read(settingsProvider).user, '');
+  test('user override replaces saved user', () {
+    final base = _base();
+    final out = const ScopeOverride(user: 'alice').applyTo(base);
+    expect(out.user, 'alice');
+    expect(out.project, 'sdk');
   });
 
   test('user + project override both apply', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    container.read(scopeOverrideProvider.notifier).state =
-        const ScopeOverride(user: 'alice', project: 'flutter');
-    final effective = container.read(effectiveSettingsProvider);
-    expect(effective.user, 'alice');
-    expect(effective.project, 'flutter');
+    final base = _base();
+    final out = const ScopeOverride(user: 'alice', project: 'flutter')
+        .applyTo(base);
+    expect(out.user, 'alice');
+    expect(out.project, 'flutter');
   });
 
-  test('empty override fields fall back to base', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    container.read(scopeOverrideProvider.notifier).state =
-        const ScopeOverride(user: 'alice', project: '');
-    final effective = container.read(effectiveSettingsProvider);
-    expect(effective.user, 'alice');
-    expect(effective.project, defaultProject);
+  test('blank project field falls back to saved project', () {
+    final base = _base();
+    final out =
+        const ScopeOverride(user: 'alice', project: '').applyTo(base);
+    expect(out.user, 'alice');
+    expect(out.project, 'sdk');
   });
 }

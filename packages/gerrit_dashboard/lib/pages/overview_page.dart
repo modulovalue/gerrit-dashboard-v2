@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gerrit_api/gerrit_api.dart';
 import 'package:go_router/go_router.dart';
+import 'package:web/web.dart' as web;
 
 import '../settings/settings_controller.dart';
 import '../widgets/change_row.dart';
@@ -75,30 +77,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
   String _customQuery = '';
 
   @override
-  void initState() {
-    super.initState();
-    final scope = widget.scope;
-    if (scope != null && !scope.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ref.read(scopeOverrideProvider.notifier).state = scope;
-      });
-    }
-  }
-
-  @override
   void dispose() {
-    final scope = widget.scope;
-    if (scope != null && !scope.isEmpty) {
-      // Clear AFTER this frame so we don't notify Riverpod during dispose.
-      final container = ProviderScope.containerOf(context, listen: false);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final current = container.read(scopeOverrideProvider);
-        if (identical(current, scope)) {
-          container.read(scopeOverrideProvider.notifier).state = null;
-        }
-      });
-    }
     _tabs?.dispose();
     _customCtrl.dispose();
     super.dispose();
@@ -113,14 +92,19 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
     return _tabs!;
   }
 
+  /// Absolute URL of the app's mount point (e.g.
+  /// `https://lab.modulovalue.com/gerrit-dashboard-v2/`), independent of
+  /// the current route.
+  Uri _appBase() {
+    if (kIsWeb) return Uri.parse(web.document.baseURI);
+    return Uri.base;
+  }
+
   Future<void> _share(GerritSettings effective) async {
-    final base = Uri.base;
-    final basePath = base.path.endsWith('/') ? base.path : '${base.path}/';
-    final url = Uri(
-      scheme: base.scheme,
-      host: base.host,
-      port: base.hasPort ? base.port : null,
-      path: '${basePath}u/${Uri.encodeComponent(effective.user)}',
+    final base = _appBase();
+    final path = base.path.endsWith('/') ? base.path : '${base.path}/';
+    final url = base.replace(
+      path: '${path}u/${Uri.encodeComponent(effective.user)}',
       queryParameters: {'project': effective.project},
     ).toString();
     await Clipboard.setData(ClipboardData(text: url));
@@ -132,9 +116,10 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
 
   @override
   Widget build(BuildContext context) {
-    final effective = ref.watch(effectiveSettingsProvider);
-    final scope = ref.watch(scopeOverrideProvider);
+    final settings = ref.watch(settingsProvider);
+    final scope = widget.scope;
     final scoped = scope != null && !scope.isEmpty;
+    final effective = scoped ? scope.applyTo(settings) : settings;
     final tabs = _buildTabs(effective, scoped: scoped);
     final controller = _controllerFor(tabs.length);
     final shareEnabled = effective.user.isNotEmpty;
@@ -210,7 +195,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
             else if (t.isMineHint)
               const _MineHint()
             else
-              _QueryView(query: t.query!),
+              _QueryView(query: t.query!, effective: effective),
         ],
       ),
     );
@@ -341,7 +326,7 @@ class _CustomQueryTab extends StatelessWidget {
                   message:
                       'Type a Gerrit query above (e.g. `owner:alice status:open`).',
                 )
-              : _QueryView(query: currentQuery),
+              : _QueryView(query: currentQuery, effective: null),
         ),
       ],
     );
@@ -350,11 +335,12 @@ class _CustomQueryTab extends StatelessWidget {
 
 class _QueryView extends ConsumerWidget {
   final String query;
-  const _QueryView({required this.query});
+  final GerritSettings? effective;
+  const _QueryView({required this.query, required this.effective});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final effective = ref.watch(effectiveSettingsProvider);
+    final GerritSettings eff = effective ?? ref.watch(settingsProvider);
     final async = ref.watch(_queryResultsProvider(query));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -376,8 +362,8 @@ class _QueryView extends ConsumerWidget {
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, i) => ChangeRow(
               change: changes[i],
-              host: effective.host,
-              project: effective.project,
+              host: eff.host,
+              project: eff.project,
             ),
           ),
         );

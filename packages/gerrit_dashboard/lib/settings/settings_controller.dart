@@ -174,9 +174,10 @@ final gerritClientProvider = Provider<GerritClient>((ref) {
   return client;
 });
 
-/// A route-driven override layered on top of the persisted settings.
-/// Populated by `/u/:user` and cleared when that route is left, so
-/// the override never survives navigation and never touches storage.
+/// A route-driven override threaded into `OverviewPage` from the
+/// `/u/:user` route. Merging is done inline in the page; we don't keep
+/// it in a global provider so the lifecycle is naturally bound to the
+/// route instance.
 @immutable
 class ScopeOverride {
   final String? user;
@@ -186,20 +187,13 @@ class ScopeOverride {
   bool get isEmpty =>
       (user == null || user!.isEmpty) &&
       (project == null || project!.isEmpty);
+
+  /// Merge this override on top of [base].
+  GerritSettings applyTo(GerritSettings base) {
+    if (isEmpty) return base;
+    return base.copyWith(
+      user: (user?.isNotEmpty ?? false) ? user : null,
+      project: (project?.isNotEmpty ?? false) ? project : null,
+    );
+  }
 }
-
-final scopeOverrideProvider = StateProvider<ScopeOverride?>((_) => null);
-
-/// [GerritSettings] with the current [ScopeOverride] merged on top.
-/// Consumers that care about "what the user is currently looking at"
-/// should watch this; consumers that care about "what is saved" should
-/// keep watching [settingsProvider] directly (e.g. the Settings page).
-final effectiveSettingsProvider = Provider<GerritSettings>((ref) {
-  final base = ref.watch(settingsProvider);
-  final override = ref.watch(scopeOverrideProvider);
-  if (override == null || override.isEmpty) return base;
-  return base.copyWith(
-    user: (override.user?.isNotEmpty ?? false) ? override.user : null,
-    project: (override.project?.isNotEmpty ?? false) ? override.project : null,
-  );
-});
