@@ -1,0 +1,46 @@
+)]}'
+[
+  {
+    "id": "sdk~main~I0abc",
+    "project": "sdk",
+    "branch": "main",
+    "change_id": "I0abc1234567890abcdef1234567890abcdef1234",
+    "subject": "Add cool feature",
+    "status": "NEW",
+    "created": "2026-05-01 10:11:12.000000000",
+    "updated": "2026-05-02 11:12:13.000000000",
+    "insertions": 12,
+    "deletions": 3,
+    "_number": 42101,
+    "owner": {
+      "_account_id": 999,
+      "name": "Ada Lovelace",
+      "email": "ada@example.com",
+      "username": "ada"
+    },
+    "current_revision": "deadbeef0000000000000000000000000000beef",
+    "revisions": {
+      "deadbeef0000000000000000000000000000beef": {
+        "_number": 3,
+        "ref": "refs/changes/01/42101/3",
+        "created": "2026-05-02 11:12:13.000000000"
+      }
+    }
+  },
+  {
+    "id": "sdk~main~Idef",
+    "project": "sdk",
+    "branch": "main",
+    "change_id": "Idef1234567890abcdef1234567890abcdef1234d",
+    "subject": "Fix bug",
+    "status": "MERGED",
+    "created": "2026-04-20 09:00:00.000000000",
+    "updated": "2026-04-21 09:00:00.000000000",
+    "_number": 41999,
+    "owner": {
+      "_account_id": 1000,
+      "name": "Grace Hopper",
+      "username": "grace"
+    }
+  }
+]

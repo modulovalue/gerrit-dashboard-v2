@@ -1,0 +1,9 @@
+name: gerrit_dashboard_v2_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.10.7
+
+workspace:
+  - packages/gerrit_api
+  - packages/gerrit_dashboard

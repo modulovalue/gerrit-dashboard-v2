@@ -1,0 +1,43 @@
+)]}'
+{
+  "id": "sdk~main~I0abc",
+  "project": "sdk",
+  "branch": "main",
+  "change_id": "I0abc1234567890abcdef1234567890abcdef1234",
+  "subject": "Add cool feature",
+  "status": "NEW",
+  "_number": 42101,
+  "owner": {"_account_id": 999, "name": "Ada Lovelace", "username": "ada"},
+  "current_revision": "deadbeef0000000000000000000000000000beef",
+  "revisions": {
+    "deadbeef0000000000000000000000000000beef": {
+      "_number": 3,
+      "ref": "refs/changes/01/42101/3",
+      "commit": {
+        "subject": "Add cool feature",
+        "message": "Add cool feature\n\nChange-Id: I0abc1234567890abcdef1234567890abcdef1234\n"
+      },
+      "files": {
+        "lib/foo.dart": {"lines_inserted": 10, "lines_deleted": 1},
+        "test/foo_test.dart": {"lines_inserted": 5, "status": "A"}
+      }
+    }
+  },
+  "labels": {
+    "Code-Review": {
+      "approved": {"_account_id": 1, "name": "Reviewer"},
+      "all": [
+        {"_account_id": 1, "name": "Reviewer"}
+      ]
+    }
+  },
+  "messages": [
+    {
+      "id": "m1",
+      "author": {"_account_id": 999, "name": "Ada Lovelace"},
+      "date": "2026-05-01 10:11:12.000000000",
+      "message": "Uploaded patch set 1.",
+      "_revision_number": 1
+    }
+  ]
+}

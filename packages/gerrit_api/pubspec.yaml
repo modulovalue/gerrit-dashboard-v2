@@ -1,0 +1,16 @@
+name: gerrit_api
+description: Pure Dart bindings for the Gerrit REST API (anonymous, read-only).
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  http: ^1.2.0
+  meta: ^1.15.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.0
