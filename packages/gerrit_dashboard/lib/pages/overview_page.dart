@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gerrit_api/gerrit_api.dart';
 import 'package:go_router/go_router.dart';
@@ -24,17 +25,23 @@ class _Tab {
         isMineHint = true;
 }
 
-List<_Tab> _buildTabs(GerritSettings settings) {
+List<_Tab> _buildTabs(GerritSettings settings, {required bool scoped}) {
   final project = settings.project;
   final user = settings.user;
+
+  String withOwner(String q) => user.isEmpty ? q : '$q owner:$user';
+
   return [
-    if (user.isNotEmpty)
-      _Tab.query('Mine', 'owner:$user project:$project')
-    else
-      const _Tab.mineHint('Mine'),
-    _Tab.query('Open', 'status:open project:$project'),
-    _Tab.query('Merged', 'status:merged project:$project'),
-    _Tab.query('Abandoned', 'status:abandoned project:$project'),
+    // When the URL has scoped the whole view to a user, the "Mine" tab
+    // is redundant: every other tab is already filtered by them.
+    if (!scoped)
+      if (user.isNotEmpty)
+        _Tab.query('Mine', 'owner:$user project:$project')
+      else
+        const _Tab.mineHint('Mine'),
+    _Tab.query('Open', withOwner('status:open project:$project')),
+    _Tab.query('Merged', withOwner('status:merged project:$project')),
+    _Tab.query('Abandoned', withOwner('status:abandoned project:$project')),
     const _Tab.custom('Custom'),
   ];
 }
@@ -53,7 +60,8 @@ final _queryResultsProvider =
 });
 
 class OverviewPage extends ConsumerStatefulWidget {
-  const OverviewPage({super.key});
+  final ScopeOverride? scope;
+  const OverviewPage({super.key, this.scope});
 
   @override
   ConsumerState<OverviewPage> createState() => _OverviewPageState();
@@ -66,6 +74,36 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
   final _customCtrl = TextEditingController();
   String _customQuery = '';
 
+  @override
+  void initState() {
+    super.initState();
+    final scope = widget.scope;
+    if (scope != null && !scope.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(scopeOverrideProvider.notifier).state = scope;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    final scope = widget.scope;
+    if (scope != null && !scope.isEmpty) {
+      // Clear AFTER this frame so we don't notify Riverpod during dispose.
+      final container = ProviderScope.containerOf(context, listen: false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final current = container.read(scopeOverrideProvider);
+        if (identical(current, scope)) {
+          container.read(scopeOverrideProvider.notifier).state = null;
+        }
+      });
+    }
+    _tabs?.dispose();
+    _customCtrl.dispose();
+    super.dispose();
+  }
+
   TabController _controllerFor(int length) {
     if (_tabs == null || _lastLength != length) {
       _tabs?.dispose();
@@ -75,18 +113,31 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
     return _tabs!;
   }
 
-  @override
-  void dispose() {
-    _tabs?.dispose();
-    _customCtrl.dispose();
-    super.dispose();
+  Future<void> _share(GerritSettings effective) async {
+    final base = Uri.base;
+    final basePath = base.path.endsWith('/') ? base.path : '${base.path}/';
+    final url = Uri(
+      scheme: base.scheme,
+      host: base.host,
+      port: base.hasPort ? base.port : null,
+      path: '${basePath}u/${Uri.encodeComponent(effective.user)}',
+      queryParameters: {'project': effective.project},
+    ).toString();
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Copied: $url')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(settingsProvider);
-    final tabs = _buildTabs(settings);
+    final effective = ref.watch(effectiveSettingsProvider);
+    final scope = ref.watch(scopeOverrideProvider);
+    final scoped = scope != null && !scope.isEmpty;
+    final tabs = _buildTabs(effective, scoped: scoped);
     final controller = _controllerFor(tabs.length);
+    final shareEnabled = effective.user.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -96,13 +147,20 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
           children: [
             const Text('Gerrit Dashboard'),
             Text(
-              '${settings.webHost} • ${settings.project}'
-              '${settings.user.isEmpty ? '' : ' • @${settings.user}'}',
+              '${effective.webHost} • ${effective.project}'
+              '${effective.user.isEmpty ? '' : ' • @${effective.user}'}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: shareEnabled
+                ? 'Copy shareable link'
+                : 'Set a user to enable sharing',
+            icon: const Icon(Icons.share),
+            onPressed: shareEnabled ? () => _share(effective) : null,
+          ),
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings),
@@ -110,26 +168,31 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(36),
-          child: SizedBox(
-            height: 36,
-            child: TabBar(
-              controller: controller,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              indicatorSize: TabBarIndicatorSize.label,
-              labelPadding: const EdgeInsets.symmetric(horizontal: 12),
-              labelStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+          preferredSize: Size.fromHeight(scoped ? 64 : 36),
+          child: Column(
+            children: [
+              if (scoped) _ScopeBanner(effective: effective),
+              SizedBox(
+                height: 36,
+                child: TabBar(
+                  controller: controller,
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  indicatorSize: TabBarIndicatorSize.label,
+                  labelPadding:
+                      const EdgeInsets.symmetric(horizontal: 12),
+                  labelStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  unselectedLabelStyle: const TextStyle(fontSize: 13),
+                  dividerHeight: 0,
+                  tabs: [
+                    for (final t in tabs) Tab(height: 32, text: t.label),
+                  ],
+                ),
               ),
-              unselectedLabelStyle: const TextStyle(fontSize: 13),
-              dividerHeight: 0,
-              tabs: [
-                for (final t in tabs)
-                  Tab(height: 32, text: t.label),
-              ],
-            ),
+            ],
           ),
         ),
       ),
@@ -140,7 +203,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
             if (t.isCustom)
               _CustomQueryTab(
                 controller: _customCtrl,
-                initialProject: settings.project,
+                initialProject: effective.project,
                 onSubmit: (q) => setState(() => _customQuery = q),
                 currentQuery: _customQuery,
               )
@@ -149,6 +212,51 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
             else
               _QueryView(query: t.query!),
         ],
+      ),
+    );
+  }
+}
+
+class _ScopeBanner extends StatelessWidget {
+  final GerritSettings effective;
+  const _ScopeBanner({required this.effective});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.secondaryContainer,
+      child: InkWell(
+        onTap: () => context.go('/'),
+        child: SizedBox(
+          height: 28,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Icon(Icons.person,
+                    size: 16, color: scheme.onSecondaryContainer),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Viewing @${effective.user} on ${effective.project}',
+                    style: TextStyle(
+                      color: scheme.onSecondaryContainer,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Tooltip(
+                  message: 'Clear scope',
+                  child: Icon(Icons.close,
+                      size: 16, color: scheme.onSecondaryContainer),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -246,7 +354,7 @@ class _QueryView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
+    final effective = ref.watch(effectiveSettingsProvider);
     final async = ref.watch(_queryResultsProvider(query));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -268,8 +376,8 @@ class _QueryView extends ConsumerWidget {
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, i) => ChangeRow(
               change: changes[i],
-              host: settings.host,
-              project: settings.project,
+              host: effective.host,
+              project: effective.project,
             ),
           ),
         );
