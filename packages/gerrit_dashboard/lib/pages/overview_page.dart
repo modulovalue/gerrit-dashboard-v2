@@ -27,6 +27,30 @@ class _Tab {
         isMineHint = true;
 }
 
+/// Orthogonal-to-status attributes a change can have. Each is exposed
+/// as a toggleable chip below the tab bar: selected = include, cleared
+/// = exclude. Status itself is already handled by the tabs.
+enum ChangeAttribute {
+  wip('WIP', 'Work-in-progress'),
+  private('Private', 'Private changes');
+
+  final String label;
+  final String description;
+  const ChangeAttribute(this.label, this.description);
+
+  bool present(ChangeInfo c) => switch (this) {
+        ChangeAttribute.wip => c.work,
+        ChangeAttribute.private => c.isPrivate,
+      };
+}
+
+bool _passesFilters(ChangeInfo c, Set<ChangeAttribute> included) {
+  for (final attr in ChangeAttribute.values) {
+    if (attr.present(c) && !included.contains(attr)) return false;
+  }
+  return true;
+}
+
 List<_Tab> _buildTabs(GerritSettings settings, {required bool scoped}) {
   final project = settings.project;
   final user = settings.user;
@@ -75,6 +99,9 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
   int _lastLength = 0;
   final _customCtrl = TextEditingController();
   String _customQuery = '';
+  // Default: include everything. Tapping a chip off hides that
+  // attribute from the currently-rendered list.
+  final Set<ChangeAttribute> _included = {...ChangeAttribute.values};
 
   @override
   void dispose() {
@@ -153,7 +180,7 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight(scoped ? 64 : 36),
+          preferredSize: Size.fromHeight((scoped ? 28 : 0) + 36 + 36),
           child: Column(
             children: [
               if (scoped) _ScopeBanner(effective: effective),
@@ -177,6 +204,16 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
                   ],
                 ),
               ),
+              _FilterChipsRow(
+                included: _included,
+                onToggle: (attr) => setState(() {
+                  if (_included.contains(attr)) {
+                    _included.remove(attr);
+                  } else {
+                    _included.add(attr);
+                  }
+                }),
+              ),
             ],
           ),
         ),
@@ -191,11 +228,50 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
                 initialProject: effective.project,
                 onSubmit: (q) => setState(() => _customQuery = q),
                 currentQuery: _customQuery,
+                included: _included,
               )
             else if (t.isMineHint)
               const _MineHint()
             else
-              _QueryView(query: t.query!, effective: effective),
+              _QueryView(
+                query: t.query!,
+                effective: effective,
+                included: _included,
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterChipsRow extends StatelessWidget {
+  final Set<ChangeAttribute> included;
+  final void Function(ChangeAttribute) onToggle;
+  const _FilterChipsRow({required this.included, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        children: [
+          for (final attr in ChangeAttribute.values) ...[
+            FilterChip(
+              label: Text(attr.label),
+              tooltip: included.contains(attr)
+                  ? 'Hide ${attr.description}'
+                  : 'Show ${attr.description}',
+              selected: included.contains(attr),
+              onSelected: (_) => onToggle(attr),
+              visualDensity: VisualDensity.compact,
+              labelStyle: const TextStyle(fontSize: 12),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+            ),
+            const SizedBox(width: 6),
+          ],
         ],
       ),
     );
@@ -283,12 +359,14 @@ class _CustomQueryTab extends StatelessWidget {
   final String initialProject;
   final void Function(String) onSubmit;
   final String currentQuery;
+  final Set<ChangeAttribute> included;
 
   const _CustomQueryTab({
     required this.controller,
     required this.initialProject,
     required this.onSubmit,
     required this.currentQuery,
+    required this.included,
   });
 
   @override
@@ -326,7 +404,11 @@ class _CustomQueryTab extends StatelessWidget {
                   message:
                       'Type a Gerrit query above (e.g. `owner:alice status:open`).',
                 )
-              : _QueryView(query: currentQuery, effective: null),
+              : _QueryView(
+                  query: currentQuery,
+                  effective: null,
+                  included: included,
+                ),
         ),
       ],
     );
@@ -336,7 +418,12 @@ class _CustomQueryTab extends StatelessWidget {
 class _QueryView extends ConsumerWidget {
   final String query;
   final GerritSettings? effective;
-  const _QueryView({required this.query, required this.effective});
+  final Set<ChangeAttribute> included;
+  const _QueryView({
+    required this.query,
+    required this.effective,
+    required this.included,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -353,19 +440,29 @@ class _QueryView extends ConsumerWidget {
         if (changes.isEmpty) {
           return _EmptyHint(message: 'No CLs found for `$query`.');
         }
+        final filtered = [
+          for (final c in changes)
+            if (_passesFilters(c, included)) c,
+        ];
         return RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(_queryResultsProvider(query));
           },
-          child: ListView.separated(
-            itemCount: changes.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, i) => ChangeRow(
-              change: changes[i],
-              host: eff.host,
-              project: eff.project,
-            ),
-          ),
+          child: filtered.isEmpty
+              ? ListView(children: [
+                  _EmptyHint(
+                    message: '${changes.length} CL(s) hidden by filters.',
+                  ),
+                ])
+              : ListView.separated(
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, i) => ChangeRow(
+                    change: filtered[i],
+                    host: eff.host,
+                    project: eff.project,
+                  ),
+                ),
         );
       },
     );
