@@ -11,17 +11,18 @@ class GerritDashboardApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     return MaterialApp.router(
-      title: 'Gerrit Dashboard',
+      title: 'Gerrit Dart Dashboard',
       debugShowCheckedModeBanner: false,
       themeMode: settings.themeMode,
       theme: ThemeData(
         useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF1E88E5),
+        // Dart brand blue.
+        colorSchemeSeed: const Color(0xFF0175C2),
         brightness: Brightness.light,
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF1E88E5),
+        colorSchemeSeed: const Color(0xFF0175C2),
         brightness: Brightness.dark,
       ),
       routerConfig: appRouter,

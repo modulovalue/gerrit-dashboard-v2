@@ -8,6 +8,7 @@ import 'package:web/web.dart' as web;
 
 import '../settings/settings_controller.dart';
 import '../widgets/change_row.dart';
+import '../widgets/dart_logo.dart';
 
 class _Tab {
   final String label;
@@ -232,15 +233,25 @@ class _OverviewPageState extends ConsumerState<OverviewPage>
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Gerrit Dashboard'),
-            Text(
-              '${effective.webHost} • ${effective.project}'
-              '${effective.user.isEmpty ? '' : ' • @${effective.user}'}',
-              style: Theme.of(context).textTheme.bodySmall,
+            const DartLogo(size: 26),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Gerrit Dart Dashboard'),
+                  Text(
+                    '${effective.webHost} • ${effective.project}'
+                    '${effective.user.isEmpty ? '' : ' • @${effective.user}'}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
